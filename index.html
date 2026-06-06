@@ -1016,15 +1016,30 @@ async function loadPatients() {
   try {
     const { data, error } = await db.from('ward_patients').select('*').order('created_at', { ascending: true });
     if (error) throw error;
-    if (data && data.length > 0) {
-      state.patients = data.map(p => ({
-        id: p.id, name: p.name, age: p.age, bed: p.bed,
-        dx: p.dx, status: p.status, admitDate: p.admit_date
-      }));
-      renderPatientList();
+    const newPatients = (data || []).map(p => ({
+      id: p.id, name: p.name, age: p.age, bed: p.bed,
+      dx: p.dx, status: p.status, admitDate: p.admit_date
+    }));
+    // Check if anything changed
+    const oldIds = state.patients.map(p => p.id).join(',');
+    const newIds = newPatients.map(p => p.id).join(',');
+    state.patients = newPatients;
+    renderPatientList();
+    // If new patients appeared and none selected, select first
+    if (oldIds !== newIds && !currentPatientId && newPatients.length > 0) {
+      selectPatient(newPatients[0].id);
+    }
+    // If current patient was deleted, clear selection
+    if (currentPatientId && !newPatients.find(p => p.id === currentPatientId)) {
+      currentPatientId = null;
+      document.getElementById('emptyState').style.display = 'flex';
+      document.getElementById('patientContent').style.display = 'none';
     }
   } catch(e) { console.warn('loadPatients error', e); }
 }
+
+// Polling fallback every 10 seconds in case realtime misses anything
+setInterval(() => { if (db) loadPatients(); }, 10000);
 
 async function loadAlerts(patientId) {
   if (!db) return;
@@ -2025,6 +2040,16 @@ setupKeyboardFix();
 loadPatients().then(() => {
   if (state.patients.length > 0) selectPatient(state.patients[0].id);
 });
+
+// Polling for current patient data every 5 seconds (catches missed realtime events)
+setInterval(() => {
+  if (db && currentPatientId) {
+    loadAlerts(currentPatientId);
+    loadChats(currentPatientId);
+    loadPending(currentPatientId);
+  }
+}, 5000);
+
 </script>
 </body>
 </html>
