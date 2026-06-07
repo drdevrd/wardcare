@@ -1055,12 +1055,16 @@ async function loadAlerts(patientId) {
     updateTabCounts();
     renderPatientList();
     // Trigger alarm for unacked alerts not yet alarmed
-    const unacked = state.alerts[patientId].filter(a => !a.acknowledged);
+    const unacked = state.alerts[patientId].filter(a => !a.acknowledged && !ackedAlertIds.has(a.id));
     if (unacked.length > 0 && currentRole === 'nurse') {
       const latest = unacked[unacked.length - 1];
       if (pendingAlarmId !== latest.id) {
         triggerAlarm(latest.text, latest.id);
       }
+    } else if (unacked.length === 0) {
+      // No unacked alerts — stop any running alarm
+      stopAlarm();
+      pendingAlarmId = null;
     }
   } catch(e) { console.warn('loadAlerts error', e); }
 }
@@ -1238,6 +1242,7 @@ let currentPatientId = null;
 let alarmAudioCtx = null;
 let alarmInterval = null;
 let pendingAlarmId = null;
+const ackedAlertIds = new Set(); // track locally acknowledged alerts to prevent re-alarm
 
 const state = {
   patients: [],
@@ -1427,11 +1432,14 @@ function acknowledgeOrder(alertId) {
   const alert = alerts.find(a => a.id === alertId);
   if (alert) {
     alert.acknowledged = true;
+    updateAlertAck(alertId, currentPatientId); // save to DB immediately
+    stopAlarm();
+    pendingAlarmId = null;
+    // Add to acknowledged set so polling doesn't retrigger
+    ackedAlertIds.add(alertId);
     renderAlerts();
     updateTabCounts();
     renderPatientList();
-    // Stop alarm if this was the pending one
-    if (pendingAlarmId === alertId) stopAlarm();
   }
 }
 
@@ -1473,13 +1481,22 @@ function stopBeeping() {
 
 function acknowledgeAlarm() {
   stopAlarm();
-  // Also acknowledge in state if nurse role
-  if (pendingAlarmId && currentRole === 'nurse') {
-    const alerts = state.alerts[currentPatientId] || [];
-    const alert = alerts.find(a => a.id === pendingAlarmId);
-    if (alert) { alert.acknowledged = true; renderAlerts(); updateTabCounts(); renderPatientList(); }
+  if (pendingAlarmId) {
+    ackedAlertIds.add(pendingAlarmId);
+    // Also acknowledge in state if nurse role
+    if (currentRole === 'nurse') {
+      const alerts = state.alerts[currentPatientId] || [];
+      const alert = alerts.find(a => a.id === pendingAlarmId);
+      if (alert) {
+        alert.acknowledged = true;
+        updateAlertAck(pendingAlarmId, currentPatientId);
+        renderAlerts();
+        updateTabCounts();
+        renderPatientList();
+      }
+    }
+    pendingAlarmId = null;
   }
-  pendingAlarmId = null;
 }
 
 function stopAlarm() {
