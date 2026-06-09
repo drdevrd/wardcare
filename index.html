@@ -878,16 +878,18 @@
         <!-- PENDING -->
         <div class="tab-panel" id="panel-pending">
           <div class="pending-panel" id="pendingPanel"></div>
-          <div class="note-input-area" id="addPendingArea">
-            <input type="text" id="pendingInput" class="note-input" placeholder="Add pending item... e.g. CBC report awaited" style="height:42px;resize:none;">
-            <select id="pendingType" style="height:42px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:0 10px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;">
-              <option value="🧪">🧪 Lab</option>
-              <option value="💊">💊 Medication</option>
-              <option value="📸">📸 Imaging</option>
-              <option value="👨‍⚕️">👨‍⚕️ Review</option>
-              <option value="📋">📋 Other</option>
-            </select>
-            <button class="send-btn" onclick="addPendingItem()">+ Add</button>
+          <div class="note-input-area" id="addPendingArea" style="flex-direction:column;gap:8px;">
+            <div style="display:flex;gap:8px;">
+              <select id="pendingType" style="height:42px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:0 10px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;flex-shrink:0;">
+                <option value="🧪">🧪 Lab</option>
+                <option value="💊">💊 Med</option>
+                <option value="📸">📸 Scan</option>
+                <option value="👨‍⚕️">👨‍⚕️ Review</option>
+                <option value="📋">📋 Other</option>
+              </select>
+              <input type="text" id="pendingInput" class="note-input" placeholder="Add pending item..." style="height:42px;resize:none;flex:1;">
+            </div>
+            <button class="send-btn" onclick="addPendingItem()" style="width:100%;justify-content:center;">+ Add Pending Item</button>
           </div>
         </div>
 
@@ -1855,12 +1857,27 @@ function renderPendingItem(item) {
   div.innerHTML = `
     <div class="pi-icon">${item.icon}</div>
     <div class="pi-text">
-      <div class="pi-title">${item.title}</div>
+      <div class="pi-title" id="pi-title-${item.id}">${item.title}</div>
       <div class="pi-sub">${item.sub}</div>
     </div>
-    <button class="done-btn" onclick="togglePending('${item.id}')">${item.done ? '✓' : ''}</button>
+    <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+      <button onclick="editPendingItem('${item.id}')" style="width:28px;height:28px;border-radius:50%;border:2px solid var(--border);background:transparent;cursor:pointer;color:var(--text3);font-size:13px;display:flex;align-items:center;justify-content:center;" title="Edit">✏️</button>
+      <button class="done-btn" onclick="togglePending('${item.id}')" title="${item.done ? 'Undo' : 'Mark done'}">${item.done ? '✓' : ''}</button>
+    </div>
   `;
   return div;
+}
+
+function editPendingItem(id) {
+  const items = state.pending[currentPatientId] || [];
+  const item = items.find(i => i.id === id);
+  if (!item) return;
+  const newText = prompt('Edit pending item:', item.title);
+  if (newText && newText.trim()) {
+    item.title = newText.trim();
+    savePending(currentPatientId, item);
+    renderPending();
+  }
 }
 
 function togglePending(id) {
