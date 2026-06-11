@@ -1338,13 +1338,15 @@ function renderPatientHeader() {
   const tagMap = { critical: 'tag-critical', stable: 'tag-stable', observation: 'tag-obs' };
   const tagLabel = { critical: '🔴 Critical', stable: '🟢 Stable', observation: '🟡 Observation' };
   document.getElementById('patientHeader').innerHTML = `
-    <div>
+    <div style="flex:1;min-width:0;">
       <div class="ph-name">${pt.name}</div>
       <div class="ph-meta">${pt.age} · ${pt.bed} · Admitted ${pt.admitDate}</div>
     </div>
     <div class="ph-tags">
       <span class="tag ${tagMap[pt.status]}">${tagLabel[pt.status]}</span>
       <span class="tag" style="background:rgba(100,116,139,0.1);color:var(--text3);border:1px solid var(--border);">🏥 ${pt.dx}</span>
+      <button onclick="editPatient('${pt.id}')" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;color:var(--text2);font-size:14px;display:flex;align-items:center;justify-content:center;" title="Edit patient">✏️</button>
+      <button onclick="deletePatient('${pt.id}')" style="width:30px;height:30px;border-radius:8px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.1);cursor:pointer;color:var(--danger);font-size:14px;display:flex;align-items:center;justify-content:center;" title="Delete patient">🗑️</button>
     </div>
   `;
 }
@@ -2052,7 +2054,57 @@ function saveTextNote() {
   renderRecords();
 }
 
-// ===================== ADD PATIENT =====================
+// ===================== DELETE / EDIT PATIENT =====================
+async function deletePatient(id) {
+  const pt = state.patients.find(p => p.id === id);
+  if (!pt) return;
+  if (!confirm(`Delete patient "${pt.name}"?\n\nThis will remove all alerts, chats, pending items and records for this patient.`)) return;
+  // Remove from DB
+  if (db) {
+    try {
+      await Promise.all([
+        db.from('ward_patients').delete().eq('id', String(id)),
+        db.from('ward_alerts').delete().eq('patient_id', String(id)),
+        db.from('ward_chats').delete().eq('patient_id', String(id)),
+        db.from('ward_pending').delete().eq('patient_id', String(id)),
+        db.from('ward_reminders').delete().eq('patient_id', String(id)),
+        db.from('ward_records').delete().eq('patient_id', String(id)),
+      ]);
+    } catch(e) { console.warn('deletePatient DB error', e); }
+  }
+  // Remove from state
+  state.patients = state.patients.filter(p => p.id !== id);
+  delete state.alerts[id];
+  delete state.chats[id];
+  delete state.pending[id];
+  delete state.reminders[id];
+  delete state.records[id];
+  // Clear selection
+  currentPatientId = null;
+  document.getElementById('emptyState').style.display = 'flex';
+  document.getElementById('patientContent').style.display = 'none';
+  renderPatientList();
+}
+
+function editPatient(id) {
+  const pt = state.patients.find(p => p.id === id);
+  if (!pt) return;
+  // Simple prompt-based edit
+  const name = prompt('Patient name:', pt.name);
+  if (!name) return;
+  const age = prompt('Age / Gender:', pt.age);
+  const bed = prompt('Bed / Ward:', pt.bed);
+  const dx = prompt('Diagnosis:', pt.dx);
+  const statusOpt = prompt('Status (stable / observation / critical):', pt.status);
+  pt.name = name.trim() || pt.name;
+  pt.age = age || pt.age;
+  pt.bed = bed || pt.bed;
+  pt.dx = dx || pt.dx;
+  if (['stable','observation','critical'].includes(statusOpt)) pt.status = statusOpt;
+  savePatient(pt);
+  renderPatientList();
+  renderPatientHeader();
+}
 function openAddPatient() { document.getElementById('addPatientModal').classList.add('show'); }
 function closeAddPatient() { document.getElementById('addPatientModal').classList.remove('show'); }
 function addPatient() {
